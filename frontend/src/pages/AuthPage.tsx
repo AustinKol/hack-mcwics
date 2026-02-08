@@ -88,7 +88,7 @@ export function AuthPage() {
               <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500 text-2xl shadow-sm">
                 🤝
               </div>
-              <h1 className="text-xl font-bold text-warmGray-800">Welcome to McGill Clubs</h1>
+              <h1 className="text-xl font-bold text-warmGray-800">Welcome to MyEx</h1>
               <p className="mt-1 text-sm text-warmGray-500">
                 {useRealAuth
                   ? 'Use your McGill email to get started'

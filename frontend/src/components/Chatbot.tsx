@@ -139,8 +139,8 @@ export function Chatbot({ className = '' }: ChatbotProps) {
   useEffect(() => {
     // Add welcome message on mount
     const welcomeMessage = isAdmin
-      ? "Hi! 👋 I'm your McGill Club Assistant. As an admin, you can ask me about applications to your club, view applicant details, and get recruitment insights. How can I help?"
-      : "Hi! 👋 I'm your McGill Club Assistant. I can help you find clubs, explore open positions, and get personalized recommendations. What are you interested in?";
+      ? "Hi! 👋 I'm Ex, your Club Assistant. As an admin, you can ask me about applications to your club, view applicant details, and get recruitment insights. How can I help?"
+      : "Hi! 👋 I'm Ex, your Club Assistant. I can help you find clubs, explore open positions, and get personalized recommendations. What are you interested in?";
     setMessages([
       chatApi.createAssistantMessage(welcomeMessage),
     ]);
