@@ -224,12 +224,6 @@ export function Landing() {
                           <p className="mt-3 text-sm text-blue-800 line-clamp-2 leading-relaxed">{club.description}</p>
                           
                           <div className="mt-4 flex flex-wrap gap-2">
-                            {club.tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}
-                          </div>
-                          
-                          <div className="mt-5 flex items-center gap-1.5 text-xs text-calm-700 font-mono">
-                            <Users size={14} />
-                            {club.memberCount} members
                           </div>
                         </CardContent>
                       </Card>
