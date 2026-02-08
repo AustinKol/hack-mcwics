@@ -10,6 +10,7 @@ import { ClubPage } from './pages/ClubPage';
 import { AuthPage } from './pages/AuthPage';
 import { Dashboard } from './pages/student/Dashboard';
 import { ApplicationForm } from './pages/student/ApplicationForm';
+import { ApplicationView } from './pages/student/ApplicationView';
 import { Forum } from './pages/student/Forum';
 import { AdminHome } from './pages/admin/AdminHome';
 import { Recruitment } from './pages/admin/Recruitment';
@@ -40,12 +41,13 @@ export default function App() {
               <Route element={<AppShell />}>
                 {/* Public */}
                 <Route path="/" element={<Landing />} />
-                <Route path="/clubs/:slug" element={<ClubPage />} />
+                <Route path="/clubs/:clubId" element={<ClubPage />} />
                 <Route path="/auth" element={<AuthPage />} />
 
                 {/* Student */}
                 <Route path="/app" element={<Dashboard />} />
-                <Route path="/app/apply/:clubSlug/:positionId" element={<ApplicationForm />} />
+                <Route path="/app/apply/:clubId/:openRoleId" element={<ApplicationForm />} />
+                <Route path="/app/applications/:applicationId" element={<ApplicationView />} />
                 <Route path="/app/forum/:applicationGroupId" element={<Forum />} />
 
                 {/* Exec */}

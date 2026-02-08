@@ -84,7 +84,7 @@ function isOpen(deadline: string): boolean {
 }
 
 export function Recruitment() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const clubId = user?.adminClub ?? '';
   const [roles, setRoles] = useState<OpenRoleData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,6 +135,14 @@ export function Recruitment() {
     await openRoleApi.delete(id);
     setRoles((prev) => prev.filter((r) => r._id !== id));
   };
+
+  if (authLoading || loading) {
+    return (
+      <PageContainer>
+        <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}</div>
+      </PageContainer>
+    );
+  }
 
   if (!clubId) {
     return (

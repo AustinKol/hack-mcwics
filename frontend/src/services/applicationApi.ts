@@ -26,7 +26,8 @@ export interface ApplicationData {
     jobTitle: string;
     description?: string;
     applicationQuestions?: string[];
-    club?: string;
+    deadline?: string;
+    club?: string | { _id: string; name: string };
   };
   applicant: {
     _id: string;
@@ -39,7 +40,35 @@ export interface ApplicationData {
   updatedAt: string;
 }
 
+export interface MyApplicationData {
+  _id: string;
+  openRole: {
+    _id: string;
+    jobTitle: string;
+    description?: string;
+    deadline?: string;
+    club?: { _id: string; name: string };
+  };
+  applicant: string;
+  answers: Record<string, string>;
+  status: AppStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const applicationApi = {
+  submit: (data: { openRoleId: string; answers: Record<string, string> }) =>
+    request<ApplicationData>('/applications', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listMine: () =>
+    request<MyApplicationData[]>('/applications/mine'),
+
+  listMyAppliedRoleIds: () =>
+    request<string[]>('/applications/mine/roles'),
+
   listForClub: (clubId: string, filters?: { openRoleId?: string; status?: string }) => {
     const params = new URLSearchParams();
     if (filters?.openRoleId) params.set('openRoleId', filters.openRoleId);

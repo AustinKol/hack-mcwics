@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, ChevronDown, Check, X, Search, Columns3, Download, ChevronUp, ChevronsUpDown,
@@ -36,16 +36,28 @@ type SortDir = 'asc' | 'desc';
 
 function StatusDropdown({ current, onChange }: { current: AppStatus; onChange: (s: AppStatus) => void }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen((o) => !o);
+  };
+
   return (
-    <div className="relative">
-      <button onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} className="inline-flex items-center gap-1 cursor-pointer">
+    <div>
+      <button ref={btnRef} onClick={handleOpen} className="inline-flex items-center gap-1 cursor-pointer">
         <Badge variant={statusVariant[current]}>{statusLabel[current]}</Badge>
         <ChevronDown size={12} className="text-warmGray-400" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-xl border border-warmGray-100 bg-white py-1 shadow-lg">
+          <div className="fixed z-50 w-48 rounded-xl border border-warmGray-100 bg-white py-1 shadow-lg" style={{ top: pos.top, left: pos.left }}>
             {ALL_STATUSES.map((s) => (
               <button
                 key={s}
@@ -136,7 +148,7 @@ const COLUMNS = [
 ];
 
 export function Applications() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();
 
@@ -247,6 +259,10 @@ export function Applications() {
     if (sortKey !== k) return <ChevronsUpDown size={12} className="text-warmGray-300" />;
     return sortDir === 'asc' ? <ChevronUp size={12} className="text-brand-500" /> : <ChevronDown size={12} className="text-brand-500" />;
   };
+
+  if (authLoading) {
+    return <PageContainer><div className="space-y-4">{Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}</div></PageContainer>;
+  }
 
   if (!clubId) {
     return <PageContainer><EmptyStateCard emoji="🔒" title="No club assigned" description="Complete exec onboarding first." /></PageContainer>;

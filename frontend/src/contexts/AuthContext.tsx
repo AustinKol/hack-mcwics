@@ -31,9 +31,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const { user: u } = await authApi.login({ email, password });
-    setUser(u);
-    return u;
+    await authApi.login({ email, password });
+    // Hydrate full user from /auth/me (includes adminClub, roles, etc.)
+    const fullUser = await authApi.me();
+    setUser(fullUser);
+    return fullUser;
   }, []);
 
   const register = useCallback(async (email: string, password: string, name?: string) => {

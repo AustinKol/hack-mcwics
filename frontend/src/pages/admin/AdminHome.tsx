@@ -13,7 +13,7 @@ import { openRoleApi, type OpenRoleData } from '../../services/openRoleApi';
 import { applicationApi, type ApplicationData } from '../../services/applicationApi';
 
 export function AdminHome() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const clubId = user?.adminClub ?? '';
   const [roles, setRoles] = useState<OpenRoleData[]>([]);
   const [apps, setApps] = useState<ApplicationData[]>([]);
@@ -30,18 +30,18 @@ export function AdminHome() {
       .finally(() => setLoading(false));
   }, [clubId]);
 
-  if (!user?.roles.includes('CLUB_LEADER') || !clubId) {
+  if (authLoading || loading) {
     return (
       <PageContainer>
-        <EmptyStateCard emoji="🔒" title="Admin access only" description="Complete exec onboarding to access this page." />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}</div>
       </PageContainer>
     );
   }
 
-  if (loading) {
+  if (!user?.roles.includes('CLUB_LEADER') || !clubId) {
     return (
       <PageContainer>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}</div>
+        <EmptyStateCard emoji="🔒" title="Admin access only" description="Complete exec onboarding to access this page." />
       </PageContainer>
     );
   }
