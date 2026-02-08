@@ -27,7 +27,7 @@ const userSchema = new Schema<IUser>(
     roles: {
       type: [String],
       enum: Object.values(Role),
-      default: [Role.USER],
+      default: [Role.STUDENT],
     },
   },
   { timestamps: true }
