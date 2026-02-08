@@ -18,7 +18,8 @@ import type {
 } from '../contracts';
 import { getStoredToken } from './authApi';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+// Portal API uses backend2 (Flask)
+const API_BASE = import.meta.env.VITE_BACKENDTWO || 'http://localhost:5001';
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();

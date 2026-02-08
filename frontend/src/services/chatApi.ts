@@ -1,4 +1,5 @@
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+// Chat API uses backend2 (Flask)
+const BACKEND_URL = import.meta.env.VITE_BACKENDTWO || 'http://localhost:5001';
 
 export interface ChatMessage {
   id: string;

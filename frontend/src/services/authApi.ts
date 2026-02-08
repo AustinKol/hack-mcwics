@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+// Auth uses backend1 (Express)
+const API_BASE = import.meta.env.VITE_BACKENDONE || 'http://localhost:3000';
 
 export interface AuthUser {
   id: string;

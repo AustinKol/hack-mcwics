@@ -1,7 +1,7 @@
 import { getStoredToken } from './authApi';
 
 // Use backend1 (Express) for discover API
-const DISCOVER_API_BASE = 'http://localhost:3000';
+const DISCOVER_API_BASE = import.meta.env.VITE_BACKENDONE || 'http://localhost:3000';
 
 async function request<T>(path: string): Promise<T> {
   const token = getStoredToken();
