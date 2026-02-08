@@ -1,6 +1,6 @@
 // mongo model for user accounts table
 
-import { Schema, model, Document, Types, CallbackWithoutResultAndOptionalError } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 
 
 // should consolidate this info to anther file so we use it in multiple places
@@ -10,9 +10,6 @@ export enum Role {
   STUDENT = "STUDENT",
   CLUB_LEADER = "CLUB_LEADER",
 }
-
-// Valid uppercase role values
-const VALID_ROLES = Object.values(Role);
 
 export interface IUser extends Document {
   _id:  Types.ObjectId;
@@ -34,10 +31,8 @@ const userSchema = new Schema<IUser>(
     passwordHash: { type: String, required: true },
     roles: {
       type: [String],
-
       enum: Object.values(Role),
       default: [Role.STUDENT],
-
     },
     bio: { type: String, default: "" },
     profilePhotoUrl: { type: String, default: "" },
@@ -47,16 +42,5 @@ const userSchema = new Schema<IUser>(
   },
   { timestamps: true }
 );
-
-// Pre-validate hook to normalize roles to uppercase before validation runs
-userSchema.pre('validate', function(next: CallbackWithoutResultAndOptionalError) {
-  if (this.roles && Array.isArray(this.roles)) {
-    this.roles = this.roles.map((role: string) => {
-      const upper = role.toUpperCase();
-      return VALID_ROLES.includes(upper as Role) ? upper as Role : role as Role;
-    });
-  }
-  next();
-});
 
 export const User = model<IUser>("User", userSchema);
