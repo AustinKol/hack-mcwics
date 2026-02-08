@@ -290,7 +290,7 @@ export function Landing() {
           </div>
 
           {/* Testimonial Cards Section */}
-          <div className="mt-24 mb-16">
+          {/* <div className="mt-24 mb-16">
             <SectionHeader
               title="What students are saying"
               subtitle="Real experiences from our users"
@@ -322,7 +322,7 @@ export function Landing() {
                 </CardContent>
               </Card>
             </div>
-          </div>
+          </div> */}
 
         </PageContainer>
       </div>
