@@ -11,26 +11,6 @@ interface ChatbotProps {
   className?: string;
 }
 
-/* ── Markdown-aware message bubble ────────────────────────────── */
-
-/**
- * The LLM sometimes returns markdown tables with all rows on a single line.
- * react-markdown needs each row on its own line to parse them.
- *
- * A table row looks like: | cell | cell | cell |
- * When collapsed it looks like: | cell | cell || cell | cell |
- *                           or: | cell | cell | | cell | cell |
- *
- * Strategy: find sequences that look like table content (pipes with text)
- * and ensure every "end-of-row then start-of-row" boundary gets a newline.
- * A row boundary is `| |` or `|\n|` — the trick is that `| |` also appears
- * inside a row as a cell separator.  The real signal for a row end is when we
- * see `| ` followed by the beginning of what looks like a new header/separator/data row.
- *
- * Safest approach: detect if the text already has properly-separated table rows.
- * If so, leave it alone.  If the text contains pipe-formatted table data all on
- * fewer lines than expected, re-split.
- */
 function fixMarkdownTables(text: string): string {
   // If the text already has multi-line table rows, leave it untouched.
   const lines = text.split('\n');
@@ -39,30 +19,6 @@ function fixMarkdownTables(text: string): string {
     // Already has at least header + separator + 1 data row on separate lines
     return text;
   }
-
-  // Otherwise, try to fix collapsed tables.
-  // Pattern: a row ends with `|` and the next row starts with `|`.
-  // Between rows there should be a newline.  When collapsed, we see `| |` or `||`.
-  // We can't just split on `| |` because that's also a cell separator.
-  //
-  // Better heuristic: split on `| |` only when the right side starts a separator row
-  // (| --- |) or when the left side has the same number of pipes as the header.
-  //
-  // Simplest robust fix: use a regex that finds the pattern where a row-ending `|`
-  // is followed (with optional spaces) by `|` and then a non-pipe character or `---`.
-  // This means: `| | Name` → `|\n| Name`  and  `| | ---` → `|\n| ---`
-  // But NOT `| Name |` (cell boundary mid-row).
-  //
-  // The key insight: within a row, pipes are always surrounded by content on both sides.
-  // At a row boundary, we see `| |` where the left `|` ends a row and the right `|` starts one.
-  // The distinguishing factor: after a row-ending `|`, the next `|` will be followed by
-  // a space and then either `---` (separator) or a word (data), and before it there's a `|`
-  // followed by optional whitespace ONLY (no cell content).
-
-  // Most practical: replace `| |` with `|\n|` only when surrounded by content that
-  // suggests a row boundary.  Given the LLM's format, let's use a different approach:
-  // count the number of `|` in what should be the header to know the column count,
-  // then split accordingly.
 
   return text.replace(
     // Find a stretch of text that looks like a collapsed table

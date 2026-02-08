@@ -214,7 +214,11 @@ export function ApplicationForm() {
             ))}
 
             <div className="flex gap-3 pt-2">
-              <Button variant="cozyGradient" icon={<Send size={16} />} disabled={submitting}>
+              <Button
+                style={{ background: 'linear-gradient(90deg, #a259ff 0%, #6a82fb 100%)', color: 'white', border: 'none' }}
+                icon={<Send size={16} />}
+                disabled={submitting}
+              >
                 {submitting ? 'Submitting...' : 'Submit Application'}
               </Button>
             </div>
