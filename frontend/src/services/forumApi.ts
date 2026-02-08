@@ -1,6 +1,7 @@
 import { getStoredToken } from './authApi';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+// Forum/thread API uses backend1 (Express)
+const API_BASE = import.meta.env.VITE_BACKENDONE || 'http://localhost:3000';
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();

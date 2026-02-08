@@ -17,6 +17,7 @@ import {
 } from "../controllers/club.controller.ts";
 import { listOpenRoles, createOpenRole } from "../controllers/openRole.controller.ts";
 import { listApplicationsForClub } from "../controllers/application.controller.ts";
+import { getOrCreateForumThread } from "../controllers/thread.controller.ts";
 
 const clubRouter = Router();
 
@@ -31,6 +32,9 @@ clubRouter.post("/:clubId/open-roles", authenticate, requireApprovedExec, create
 
 // Applications for a club (approved exec)
 clubRouter.get("/:clubId/applications", authenticate, requireApprovedExec, listApplicationsForClub);
+
+// Forum thread: idempotent get-or-create
+clubRouter.post("/:clubId/forum-thread", authenticate, getOrCreateForumThread);
 
 // Auth required
 clubRouter.post("/", authenticate, createClub);
