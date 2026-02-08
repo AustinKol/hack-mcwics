@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Users, ArrowDown, Terminal } from 'lucide-react';
+import { Search, ArrowDown, Terminal } from 'lucide-react';
 import { AnimatedPage } from '../components/motion/AnimatedPage';
 import { PageContainer } from '../components/layout/PageContainer';
 import { SectionHeader } from '../components/layout/SectionHeader';
