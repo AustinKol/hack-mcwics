@@ -442,45 +442,20 @@ def call_cortex_llm(prompt, conversation_history=None):
                 full_prompt += f"{role}: {msg['content']}\n\n"
         full_prompt += f"User: {prompt}\n\nAssistant:"
         
-        # Build proper JSON using Python's json module
-        messages = [{"role": "user", "content": full_prompt}]
-        options = {"region": "AWS_US"}
-        
-        messages_json = json.dumps(messages)
-        options_json = json.dumps(options)
-        
-        # Escape single quotes for SQL
-        messages_sql = messages_json.replace("'", "''")
-        options_sql = options_json.replace("'", "''")
-        
-        # Call Cortex COMPLETE with cross-region inference enabled (AWS_US)
-        sql = f"""
+        # Use simple string prompt format (cross-region enabled at account level)
+        sql = """
         SELECT SNOWFLAKE.CORTEX.COMPLETE(
             'mistral-large',
-            PARSE_JSON('{messages_sql}'),
-            PARSE_JSON('{options_sql}')
+            %s
         ) AS response
         """
         
-        cs.execute(sql)
+        cs.execute(sql, (full_prompt,))
         result = cs.fetchone()
         
         if result and result[0]:
-            # Response is a JSON string when using messages array format
-            response_data = result[0]
-            if isinstance(response_data, str):
-                try:
-                    parsed = json.loads(response_data)
-                    # Extract message content from the response structure
-                    if 'choices' in parsed:
-                        return parsed['choices'][0]['messages']
-                    elif 'message' in parsed:
-                        return parsed['message']
-                    else:
-                        return response_data
-                except json.JSONDecodeError:
-                    return response_data
-            return str(response_data)
+            # Simple string format returns plain text
+            return str(result[0])
         return "Sorry, I couldn't generate a response."
         
     finally:
