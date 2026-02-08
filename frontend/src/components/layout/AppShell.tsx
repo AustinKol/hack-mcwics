@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { StickyHeader } from './StickyHeader';
+import { ChatWidget } from '../ChatWidget';
 
 export function AppShell() {
   return (
@@ -8,6 +9,7 @@ export function AppShell() {
       <main className="flex-1">
         <Outlet />
       </main>
+      <ChatWidget />
       <footer className="border-t border-warmGray-100 bg-white/60 backdrop-blur-sm">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
           <p className="text-center text-xs text-warmGray-400">

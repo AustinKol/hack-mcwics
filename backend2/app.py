@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import time
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import snowflake.connector
@@ -18,6 +19,10 @@ mongo_db = None
 
 # Valid application statuses
 VALID_STATUSES = ['SUBMITTED', 'UNDER_REVIEW', 'ACCEPTED', 'REJECTED', 'WITHDRAWN', 'WAITLISTED', 'INTERVIEW_SCHEDULED']
+
+# Context cache: session_id -> { 'data': {...}, 'timestamp': float }
+_context_cache = {}
+CONTEXT_CACHE_TTL = 30  # seconds
 
 
 def get_mongo_db():
@@ -212,8 +217,19 @@ def populate_application(db, app):
             role_oid = ObjectId(role_id) if isinstance(role_id, str) else role_id
             role = db.openroles.find_one({'_id': role_oid})
             if role:
-                app_copy['roleName'] = role.get('title', role.get('name', ''))
-                app_copy['clubName'] = role.get('clubName', '')
+                app_copy['roleName'] = role.get('jobTitle') or role.get('title') or role.get('name', '')
+                # Club name: look up the club document via the role's club reference
+                club_ref = role.get('club')
+                if club_ref:
+                    try:
+                        club_oid = ObjectId(club_ref) if isinstance(club_ref, str) else club_ref
+                        club = db.clubs.find_one({'_id': club_oid})
+                        if club:
+                            app_copy['clubName'] = club.get('name', '')
+                    except:
+                        pass
+                if not app_copy.get('clubName'):
+                    app_copy['clubName'] = role.get('clubName', '')
         except:
             pass
     
@@ -236,18 +252,20 @@ def get_mongo_context(query=None, user_email=None):
         db = get_mongo_db()
         context = {}
         
-        # Get users (without sensitive data)
-        users = list(db.users.find({}, {'passwordHash': 0, '_id': 0}).limit(50))
-        context['users'] = users
-        print(f"[MONGO_CTX] Fetched {len(users)} users")
-        
-        # Get clubs from MongoDB
-        clubs = list(db.clubs.find({}, {'_id': 0}).limit(50))
+        # Skip full user list – not needed for LLM prompt
+        # Only fetch lightweight club info (name, slug, description, tags)
+        clubs = list(db.clubs.find({}, {
+            '_id': 0, 'name': 1, 'slug': 1, 'description': 1,
+            'tags': 1, 'memberCount': 1, 'isRecruiting': 1
+        }).limit(50))
         context['mongo_clubs'] = clubs
         print(f"[MONGO_CTX] Fetched {len(clubs)} clubs")
         
-        # Get open roles/positions
-        openroles = list(db.openroles.find({}, {'_id': 0}).limit(50))
+        # Lightweight open roles (title, description, requirements, deadline)
+        openroles = list(db.openroles.find({}, {
+            '_id': 0, 'title': 1, 'jobTitle': 1, 'description': 1,
+            'requirements': 1, 'deadline': 1, 'isOpen': 1, 'clubName': 1
+        }).limit(50))
         context['openroles'] = openroles
         print(f"[MONGO_CTX] Fetched {len(openroles)} openroles")
         
@@ -832,6 +850,18 @@ def get_club_context():
         return {'error': str(e)}
 
 
+def _slim_application(app):
+    """Return only the fields the LLM needs for an application."""
+    return {
+        '_id': app.get('_id', ''),
+        'applicantName': app.get('applicantName', ''),
+        'applicantEmail': app.get('applicantEmail', ''),
+        'status': app.get('status', ''),
+        'roleName': app.get('roleName', ''),
+        'clubName': app.get('clubName', ''),
+    }
+
+
 def build_system_prompt(context, mongo_context=None):
     """Build system prompt with current data context from Snowflake and MongoDB."""
 
@@ -843,36 +873,37 @@ def build_system_prompt(context, mongo_context=None):
 
     if mongo_context:
         if 'mongo_clubs' in mongo_context and mongo_context['mongo_clubs']:
-            mongo_clubs_str = json.dumps(mongo_context['mongo_clubs'], indent=2, default=str)
+            mongo_clubs_str = json.dumps(mongo_context['mongo_clubs'], default=str)
         if 'openroles' in mongo_context and mongo_context['openroles']:
-            openroles_str = json.dumps(mongo_context['openroles'], indent=2, default=str)
+            openroles_str = json.dumps(mongo_context['openroles'], default=str)
 
         # Current user info
         if 'current_user' in mongo_context:
             user = mongo_context['current_user']
             mongo_section += f"\n\nCurrent user: {user.get('name', 'Unknown')} ({user.get('email')}) - Roles: {', '.join(user.get('roles', []))}"
 
-        if 'users' in mongo_context and mongo_context['users']:
-            users_str = json.dumps(mongo_context['users'], indent=2, default=str)
-            mongo_section += f"\n\nRegistered users on the platform (from MongoDB):\n{users_str}"
+        # NOTE: Full user list intentionally excluded to reduce prompt size
 
-        # Admin-specific: applications to their clubs
+        # Admin-specific: applications to their clubs (slim format)
         if 'admin_clubs' in mongo_context:
-            admin_clubs_str = json.dumps(mongo_context['admin_clubs'], indent=2, default=str)
+            admin_clubs_str = json.dumps(mongo_context['admin_clubs'], default=str)
             admin_section += f"\n\n=== ADMIN ACCESS ===\nYou are an admin for these clubs:\n{admin_clubs_str}"
 
-            if 'club_applications' in mongo_context and mongo_context['club_applications']:
-                apps_str = json.dumps(mongo_context['club_applications'], indent=2, default=str)
-                admin_section += f"\n\nApplications to your clubs:\n{apps_str}"
+            apps = mongo_context.get('club_applications', [])
+            if apps:
+                slim_apps = [_slim_application(a) for a in apps]
+                apps_str = json.dumps(slim_apps, default=str)
+                admin_section += f"\n\nApplications to your clubs ({len(slim_apps)} total):\n{apps_str}"
             else:
                 admin_section += "\n\nNo applications found for your clubs yet."
 
-        # Global admin: all applications
+        # Global admin: all applications (slim format)
         if 'all_applications' in mongo_context and mongo_context['all_applications']:
-            apps_str = json.dumps(mongo_context['all_applications'], indent=2, default=str)
-            admin_section += f"\n\n=== ADMIN ACCESS ===\nAll applications on the platform:\n{apps_str}"
+            slim_apps = [_slim_application(a) for a in mongo_context['all_applications']]
+            apps_str = json.dumps(slim_apps, default=str)
+            admin_section += f"\n\n=== ADMIN ACCESS ===\nAll applications on the platform ({len(slim_apps)} total):\n{apps_str}"
 
-    return f"""You are a helpful assistant for McGill University's club recruitment platform.
+    return f"""You are a helpful, concise assistant for McGill University's club recruitment platform.
 You help students find clubs and positions that match their interests.
 
 Here is the current data about clubs (from MongoDB):
@@ -884,13 +915,20 @@ Here are the current open roles/positions (from MongoDB):
 
 Guidelines:
 - Be friendly and helpful
-- Format responses in a clear, readable way
+- **Always format your responses in Markdown.** Use headings (##, ###), bold, bullet lists, numbered lists, tables, and code blocks where appropriate so the frontend can render them nicely.
+- When outputting Markdown tables, you MUST put each row on its own line with a newline character between rows. Example:
+
+| Name | Status |
+| --- | --- |
+| Alice | ACCEPTED |
+| Bob | REJECTED |
+
 - When recommending clubs, explain why they might be a good fit
 - Always mention relevant deadlines for positions
 - If a user asks about applying, guide them but note you cannot submit applications for them
 - Keep responses concise but informative
 - You have access to data from MongoDB - use it to provide accurate, personalized responses
-- If the user is an admin and asks about applications to their club, show them the relevant application data
+- If the user is an admin and asks about applications to their club, show them the relevant application data in a Markdown table with columns like Name, Email, Role, Status
 - For admin users, you can summarize application stats, list applicants, and provide insights about applications
 
 ADMIN UPDATE CAPABILITIES:
@@ -968,11 +1006,20 @@ def chat():
         
         session = chat_sessions[session_id]
         
-        # Always refresh mongo context so applications are up-to-date
+        # Use cached context if fresh enough, otherwise refresh
         if user_email:
-            session['mongo_context'] = get_mongo_context(user_message, user_email)
+            cache_key = f"{session_id}:{user_email}"
+            cached = _context_cache.get(cache_key)
+            now = time.time()
+            if cached and (now - cached['timestamp']) < CONTEXT_CACHE_TTL:
+                session['mongo_context'] = cached['data']
+                print(f"[DEBUG] Using cached mongo_context (age {now - cached['timestamp']:.1f}s)")
+            else:
+                session['mongo_context'] = get_mongo_context(user_message, user_email)
+                _context_cache[cache_key] = {'data': session['mongo_context'], 'timestamp': now}
+                print(f"[DEBUG] Refreshed mongo_context keys: {list(session['mongo_context'].keys())}")
+
             session['user_email'] = user_email
-            print(f"[DEBUG] Refreshed mongo_context keys: {list(session['mongo_context'].keys())}")
             print(f"[DEBUG] current_user: {session['mongo_context'].get('current_user')}")
             print(f"[DEBUG] admin_clubs: {session['mongo_context'].get('admin_clubs')}")
             print(f"[DEBUG] club_applications count: {len(session['mongo_context'].get('club_applications', []))}")
@@ -1010,8 +1057,10 @@ def chat():
                                 'the applicant'
                             )
                             action_result = f"✅ I've updated the application for {applicant_name} to status: **{update_cmd['new_status']}**."
-                            # Refresh the mongo context to get updated data
+                            # Force-refresh mongo context after mutation
                             session['mongo_context'] = get_mongo_context(user_message, user_email)
+                            cache_key = f"{session_id}:{user_email}"
+                            _context_cache[cache_key] = {'data': session['mongo_context'], 'timestamp': time.time()}
                         else:
                             action_result = f"❌ Could not update the application: {result['error']}"
                     else:
@@ -1039,9 +1088,9 @@ def chat():
         session['history'].append({'role': 'user', 'content': user_message})
         session['history'].append({'role': 'assistant', 'content': response})
         
-        # Keep history manageable (last 10 exchanges)
-        if len(session['history']) > 20:
-            session['history'] = session['history'][-20:]
+        # Keep history manageable (last 6 exchanges = 12 messages)
+        if len(session['history']) > 12:
+            session['history'] = session['history'][-12:]
         
         return jsonify({
             'response': response,
