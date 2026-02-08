@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Users, Sparkles } from 'lucide-react';
+import { Search, Sparkles, Briefcase } from 'lucide-react';
 import { AnimatedPage } from '../components/motion/AnimatedPage';
 import { PageContainer } from '../components/layout/PageContainer';
 import { SectionHeader } from '../components/layout/SectionHeader';
@@ -11,34 +11,40 @@ import { TabsSegmented } from '../components/ui/TabsSegmented';
 import { AnimatedTabContent } from '../components/motion/AnimatedTabContent';
 import { EmptyStateCard } from '../components/ui/EmptyStateCard';
 import { SkeletonCard } from '../components/ui/SkeletonCard';
-import { useApi } from '../contexts/ApiContext';
-import type { Club } from '../contracts';
+import { discoverApi, type DiscoverClub } from '../services/discoverApi';
 
 const filterTabs = [
   { key: 'all', label: 'All Clubs' },
   { key: 'recruiting', label: 'Recruiting' },
-  { key: 'popular', label: 'Popular' },
+  { key: 'most_roles', label: 'Most Roles' },
 ];
 
 export function Landing() {
-  const api = useApi();
-  const [clubs, setClubs] = useState<Club[]>([]);
+  const [clubs, setClubs] = useState<DiscoverClub[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
-    api.listAllClubs().then((data) => { setClubs(data); setLoading(false); });
-  }, [api]);
+    discoverApi.listClubs()
+      .then(setClubs)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
-  const filtered = clubs.filter((club) => {
-    const matchesSearch =
-      club.name.toLowerCase().includes(search.toLowerCase()) ||
-      club.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
-    if (filter === 'recruiting') return matchesSearch && club.isRecruiting;
-    if (filter === 'popular') return matchesSearch && club.memberCount >= 100;
-    return matchesSearch;
-  });
+  const filtered = clubs
+    .filter((club) => {
+      const q = search.toLowerCase();
+      const matchesSearch =
+        club.name.toLowerCase().includes(q) ||
+        club.description.toLowerCase().includes(q);
+      if (filter === 'recruiting') return matchesSearch && club.isRecruiting;
+      return matchesSearch;
+    })
+    .sort((a, b) => {
+      if (filter === 'most_roles') return b.openRoleCount - a.openRoleCount;
+      return 0;
+    });
 
   return (
     <AnimatedPage>
@@ -63,7 +69,7 @@ export function Landing() {
           <div className="relative flex-1 max-w-md">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-warmGray-400" />
             <Input
-              placeholder="Search clubs or tags..."
+              placeholder="Search clubs..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10"
@@ -88,24 +94,23 @@ export function Landing() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((club) => (
-                <Link key={club.id} to={`/clubs/${club.slug}`}>
+                <Link key={club._id} to={`/clubs/${club._id}`}>
                   <Card hover className="h-full">
                     <CardContent>
                       <div className="mb-3 flex items-center justify-between">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-100 to-calm-100 text-lg">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-100 to-calm-100 text-lg font-bold text-brand-600">
                           {club.name.charAt(0)}
                         </div>
                         {club.isRecruiting && <Badge variant="success">Recruiting</Badge>}
                       </div>
                       <h3 className="font-semibold text-warmGray-800">{club.name}</h3>
                       <p className="mt-1 text-sm text-warmGray-500 line-clamp-2">{club.description}</p>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {(Array.isArray(club.tags) ? club.tags : (club.tags || '').split(',')).filter(Boolean).map((tag) => <Badge key={tag}>{tag.trim()}</Badge>)}
-                      </div>
-                      <div className="mt-3 flex items-center gap-1 text-xs text-warmGray-400">
-                        <Users size={14} />
-                        {club.memberCount} members
-                      </div>
+                      {club.openRoleCount > 0 && (
+                        <div className="mt-3 flex items-center gap-1 text-xs text-warmGray-400">
+                          <Briefcase size={14} />
+                          {club.openRoleCount} open role{club.openRoleCount !== 1 ? 's' : ''}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </Link>

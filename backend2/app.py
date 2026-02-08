@@ -584,6 +584,40 @@ def get_clubs():
     recruiting = request.args.get('recruiting')
     min_members = request.args.get('min_members')
 
+    # Prioritize MongoDB
+    try:
+        db = get_mongo_db()
+        query = {}
+        if tag:
+            query['tags'] = {'$regex': tag, '$options': 'i'}
+        if recruiting is not None:
+            query['isRecruiting'] = recruiting.lower() == 'true'
+        
+        mongo_clubs = list(db.clubs.find(query))
+        
+        clubs = []
+        for c in mongo_clubs:
+            member_count = c.get('memberCount', c.get('member_count', 0))
+            if min_members and member_count < int(min_members):
+                continue
+            clubs.append({
+                'id': str(c.get('_id')),
+                'slug': c.get('slug', ''),
+                'name': c.get('name', ''),
+                'description': c.get('description', ''),
+                'tags': c.get('tags', ''),
+                'member_count': member_count,
+                'is_recruiting': c.get('isRecruiting', c.get('is_recruiting', False)),
+                'created_at': str(c.get('createdAt', c.get('created_at', ''))),
+                'logo': c.get('logo', ''),
+            })
+        
+        if clubs:
+            return jsonify(clubs)
+    except Exception as e:
+        print(f"MongoDB clubs error: {e}")
+    
+    # Fallback to Snowflake
     sql = 'SELECT * FROM clubs WHERE 1=1'
     if tag:
         sql += f" AND LOWER(tags) LIKE '%{tag.lower()}%'"
@@ -600,11 +634,80 @@ def get_clubs():
 # GET /clubs/<slug>  – single club by slug
 @app.route('/clubs/<slug>')
 def get_club(slug):
+    # Prioritize MongoDB
+    try:
+        db = get_mongo_db()
+        c = db.clubs.find_one({'$or': [{'slug': slug}, {'name': {'$regex': f'^{slug}$', '$options': 'i'}}]})
+        if c:
+            return jsonify({
+                'id': str(c.get('_id')),
+                'slug': c.get('slug', ''),
+                'name': c.get('name', ''),
+                'description': c.get('description', ''),
+                'tags': c.get('tags', ''),
+                'member_count': c.get('memberCount', c.get('member_count', 0)),
+                'is_recruiting': c.get('isRecruiting', c.get('is_recruiting', False)),
+                'created_at': str(c.get('createdAt', c.get('created_at', ''))),
+                'logo': c.get('logo', ''),
+            })
+    except Exception as e:
+        print(f"MongoDB club error: {e}")
+    
+    # Fallback to Snowflake
     try:
         rows = query_snowflake("SELECT * FROM clubs WHERE slug = %s", (slug,))
         if not rows:
             return jsonify({'error': 'Club not found'}), 404
         return jsonify(rows[0])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# GET /clubs/<club_slug>/positions  – positions for a club
+@app.route('/clubs/<club_slug>/positions')
+def get_club_positions(club_slug):
+    # Prioritize MongoDB openroles
+    try:
+        db = get_mongo_db()
+        club = db.clubs.find_one({'$or': [{'slug': club_slug}, {'name': {'$regex': club_slug, '$options': 'i'}}]})
+        if club:
+            club_id_str = str(club.get('_id'))
+            
+            roles = list(db.openroles.find({
+                '$or': [
+                    {'club': club.get('_id')},
+                    {'club': club_id_str},
+                    {'clubId': club_id_str},
+                ]
+            }))
+            
+            positions = []
+            for role in roles:
+                positions.append({
+                    'id': str(role.get('_id')),
+                    'clubId': club_id_str,
+                    'title': role.get('jobTitle') or role.get('title') or role.get('name', ''),
+                    'description': role.get('description', ''),
+                    'requirements': role.get('requirements', []),
+                    'deadline': str(role.get('deadline', '')),
+                    'is_open': role.get('isOpen', True),
+                    'applicant_count': role.get('applicantCount', 0),
+                    'created_at': str(role.get('createdAt', '')),
+                })
+            
+            if positions:
+                return jsonify(positions)
+    except Exception as e:
+        print(f"MongoDB positions error: {e}")
+    
+    # Fallback to Snowflake
+    try:
+        club_rows = query_snowflake("SELECT id FROM clubs WHERE slug = %s", (club_slug,))
+        if club_rows:
+            club_id = club_rows[0]['id']
+            positions = query_snowflake("SELECT * FROM positions WHERE club_id = %s", (club_id,))
+            return jsonify(positions)
+        return jsonify([])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -659,6 +762,41 @@ def get_positions():
     club_id = request.args.get('club_id')
     is_open = request.args.get('is_open')
 
+    # Prioritize MongoDB openroles
+    try:
+        db = get_mongo_db()
+        query = {}
+        if club_id:
+            try:
+                query['$or'] = [{'club': ObjectId(club_id)}, {'club': club_id}, {'clubId': club_id}]
+            except:
+                query['$or'] = [{'club': club_id}, {'clubId': club_id}]
+        if is_open is not None:
+            query['isOpen'] = is_open.lower() == 'true'
+        
+        roles = list(db.openroles.find(query))
+        positions = []
+        for role in roles:
+            club_ref = role.get('club')
+            club_id_str = str(club_ref) if club_ref else ''
+            positions.append({
+                'id': str(role.get('_id')),
+                'club_id': club_id_str,
+                'title': role.get('jobTitle') or role.get('title') or role.get('name', ''),
+                'description': role.get('description', ''),
+                'requirements': role.get('requirements', []),
+                'deadline': str(role.get('deadline', '')),
+                'is_open': role.get('isOpen', True),
+                'applicant_count': role.get('applicantCount', 0),
+                'created_at': str(role.get('createdAt', '')),
+            })
+        
+        if positions:
+            return jsonify(positions)
+    except Exception as e:
+        print(f"MongoDB positions error: {e}")
+    
+    # Fallback to Snowflake
     sql = 'SELECT * FROM positions WHERE 1=1'
     if club_id:
         sql += f" AND club_id = '{club_id}'"
@@ -673,11 +811,99 @@ def get_positions():
 # GET /positions/<position_id>  – single position
 @app.route('/positions/<position_id>')
 def get_position(position_id):
+    # Prioritize MongoDB openroles
+    try:
+        db = get_mongo_db()
+        role = None
+        try:
+            role = db.openroles.find_one({'_id': ObjectId(position_id)})
+        except:
+            pass
+        
+        if role:
+            club_ref = role.get('club')
+            club_id_str = str(club_ref) if club_ref else ''
+            return jsonify({
+                'id': str(role.get('_id')),
+                'club_id': club_id_str,
+                'title': role.get('jobTitle') or role.get('title') or role.get('name', ''),
+                'description': role.get('description', ''),
+                'requirements': role.get('requirements', []),
+                'deadline': str(role.get('deadline', '')),
+                'is_open': role.get('isOpen', True),
+                'applicant_count': role.get('applicantCount', 0),
+                'created_at': str(role.get('createdAt', '')),
+            })
+    except Exception as e:
+        print(f"MongoDB position error: {e}")
+    
+    # Fallback to Snowflake
     try:
         rows = query_snowflake("SELECT * FROM positions WHERE id = %s", (position_id,))
         if not rows:
             return jsonify({'error': 'Position not found'}), 404
         return jsonify(rows[0])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# GET /positions/<position_id>/form-schema  – get application form schema
+@app.route('/positions/<position_id>/form-schema')
+def get_form_schema(position_id):
+    """Get application form schema for a position."""
+    try:
+        db = get_mongo_db()
+        
+        # Try to find the open role in MongoDB
+        role = None
+        try:
+            role = db.openroles.find_one({'_id': ObjectId(position_id)})
+        except:
+            pass
+        
+        if not role:
+            # Check Snowflake positions
+            rows = query_snowflake("SELECT * FROM positions WHERE id = %s", (position_id,))
+            if rows:
+                # Return a default form schema based on Snowflake position
+                pos = rows[0]
+                return jsonify({
+                    'id': f'fs-{position_id}',
+                    'positionId': position_id,
+                    'questions': [
+                        {'id': 'q1', 'label': 'Why do you want to join?', 'type': 'long_text', 'required': True, 'placeholder': 'Tell us about your motivation...'},
+                        {'id': 'q2', 'label': 'Relevant experience?', 'type': 'long_text', 'required': True, 'placeholder': 'Describe your relevant skills and experience...'},
+                    ],
+                    'updatedAt': pos.get('created_at', '')
+                })
+            return jsonify({'error': 'Position not found'}), 404
+        
+        # Build form schema from MongoDB openRole
+        questions = []
+        app_questions = role.get('applicationQuestions', [])
+        
+        for i, q in enumerate(app_questions):
+            questions.append({
+                'id': f'q{i+1}',
+                'label': q if isinstance(q, str) else q.get('label', q.get('question', '')),
+                'type': 'long_text',
+                'required': True,
+                'placeholder': f'Enter your answer...'
+            })
+        
+        # Add default questions if none exist
+        if not questions:
+            questions = [
+                {'id': 'q1', 'label': 'Why do you want to join?', 'type': 'long_text', 'required': True, 'placeholder': 'Tell us about your motivation...'},
+                {'id': 'q2', 'label': 'Relevant experience?', 'type': 'long_text', 'required': True, 'placeholder': 'Describe your relevant skills and experience...'},
+            ]
+        
+        return jsonify({
+            'id': f'fs-{position_id}',
+            'positionId': position_id,
+            'questions': questions,
+            'updatedAt': str(role.get('updatedAt', role.get('createdAt', '')))
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

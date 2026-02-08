@@ -64,7 +64,7 @@ export function ClubPage() {
             </div>
             <p className="mt-2 text-warmGray-500">{club.description}</p>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {club.tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}
+              {(Array.isArray(club.tags) ? club.tags : (club.tags || '').split(',')).filter(Boolean).map((tag) => <Badge key={tag}>{typeof tag === 'string' ? tag.trim() : tag}</Badge>)}
             </div>
             <div className="mt-3 flex items-center gap-4 text-sm text-warmGray-400">
               <span className="flex items-center gap-1"><Users size={14} />{club.memberCount} members</span>
@@ -91,7 +91,7 @@ export function ClubPage() {
                       <h3 className="font-semibold text-warmGray-800">{pos.title}</h3>
                       <p className="mt-1 text-sm text-warmGray-500">{pos.description}</p>
                       <div className="mt-2 flex flex-wrap gap-1.5">
-                        {pos.requirements.map((req) => <Badge key={req} variant="info">{req}</Badge>)}
+                        {(Array.isArray(pos.requirements) ? pos.requirements : (pos.requirements || '').split(',')).filter(Boolean).map((req) => <Badge key={req} variant="info">{typeof req === 'string' ? req.trim() : req}</Badge>)}
                       </div>
                       <div className="mt-2 flex items-center gap-3 text-xs text-warmGray-400">
                         <span>Deadline: {pos.deadline}</span>
