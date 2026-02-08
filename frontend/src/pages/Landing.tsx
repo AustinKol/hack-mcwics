@@ -37,7 +37,8 @@ export function Landing() {
       const q = search.toLowerCase();
       const matchesSearch =
         club.name.toLowerCase().includes(q) ||
-        club.description.toLowerCase().includes(q);
+        club.description.toLowerCase().includes(q) ||
+        (club.tags ?? []).some((tag) => tag.toLowerCase().includes(q));
       if (filter === 'recruiting') return matchesSearch && club.isRecruiting;
       return matchesSearch;
     })
@@ -105,6 +106,15 @@ export function Landing() {
                       </div>
                       <h3 className="font-semibold text-warmGray-800">{club.name}</h3>
                       <p className="mt-1 text-sm text-warmGray-500 line-clamp-2">{club.description}</p>
+                      {(club.tags ?? []).length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1">
+                          {club.tags!.slice(0, 4).map((tag) => (
+                            <Badge key={tag} variant="info">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                       {club.openRoleCount > 0 && (
                         <div className="mt-3 flex items-center gap-1 text-xs text-warmGray-400">
                           <Briefcase size={14} />
