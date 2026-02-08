@@ -1,4 +1,5 @@
 import os
+import json
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import snowflake.connector
@@ -378,6 +379,174 @@ def recommend():
         return jsonify({'recommended_clubs': clubs, 'recommended_positions': positions})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+#  CHATBOT - Snowflake Cortex with Mistral
+# ============================================
+
+# Store chat history per session (in production, use Redis or database)
+chat_sessions = {}
+
+def get_club_context():
+    """Get current club and position data as context for the LLM."""
+    try:
+        clubs = query_snowflake('SELECT name, slug, description, tags, member_count, is_recruiting FROM clubs')
+        positions = query_snowflake('''
+            SELECT p.title, p.description, p.requirements, p.deadline, p.is_open, p.applicant_count, c.name as club_name
+            FROM positions p 
+            JOIN clubs c ON p.club_id = c.id
+        ''')
+        return {
+            'clubs': clubs,
+            'positions': positions
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def build_system_prompt(context):
+    """Build system prompt with current data context."""
+    clubs_str = json.dumps(context.get('clubs', []), indent=2, default=str)
+    positions_str = json.dumps(context.get('positions', []), indent=2, default=str)
+    
+    return f"""You are a helpful assistant for McGill University's club recruitment platform.
+You help students find clubs and positions that match their interests.
+
+Here is the current data about clubs:
+{clubs_str}
+
+Here are the current open positions:
+{positions_str}
+
+Guidelines:
+- Be friendly and helpful
+- Format responses in a clear, readable way
+- When recommending clubs, explain why they might be a good fit
+- Always mention relevant deadlines for positions
+- If a user asks about applying, guide them but note you cannot submit applications for them
+- Keep responses concise but informative"""
+
+
+def call_cortex_llm(prompt, conversation_history=None):
+    """Call Snowflake Cortex COMPLETE function with Mistral."""
+    conn = get_snowflake_conn()
+    cs = conn.cursor()
+    
+    try:
+        # Build the full prompt with conversation history
+        full_prompt = ""
+        if conversation_history:
+            for msg in conversation_history:
+                role = "User" if msg['role'] == 'user' else "Assistant"
+                full_prompt += f"{role}: {msg['content']}\n\n"
+        full_prompt += f"User: {prompt}\n\nAssistant:"
+        
+        # Build proper JSON using Python's json module
+        messages = [{"role": "user", "content": full_prompt}]
+        options = {"region": "AWS_US"}
+        
+        messages_json = json.dumps(messages)
+        options_json = json.dumps(options)
+        
+        # Escape single quotes for SQL
+        messages_sql = messages_json.replace("'", "''")
+        options_sql = options_json.replace("'", "''")
+        
+        # Call Cortex COMPLETE with cross-region inference enabled (AWS_US)
+        sql = f"""
+        SELECT SNOWFLAKE.CORTEX.COMPLETE(
+            'mistral-large',
+            PARSE_JSON('{messages_sql}'),
+            PARSE_JSON('{options_sql}')
+        ) AS response
+        """
+        
+        cs.execute(sql)
+        result = cs.fetchone()
+        
+        if result and result[0]:
+            # Response is a JSON string when using messages array format
+            response_data = result[0]
+            if isinstance(response_data, str):
+                try:
+                    parsed = json.loads(response_data)
+                    # Extract message content from the response structure
+                    if 'choices' in parsed:
+                        return parsed['choices'][0]['messages']
+                    elif 'message' in parsed:
+                        return parsed['message']
+                    else:
+                        return response_data
+                except json.JSONDecodeError:
+                    return response_data
+            return str(response_data)
+        return "Sorry, I couldn't generate a response."
+        
+    finally:
+        cs.close()
+        conn.close()
+
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    """Chat endpoint using Snowflake Cortex with Mistral."""
+    data = request.json
+    user_message = data.get('message', '')
+    session_id = data.get('session_id', 'default')
+    
+    if not user_message:
+        return jsonify({'error': 'Message is required'}), 400
+    
+    try:
+        # Get or create session history
+        if session_id not in chat_sessions:
+            chat_sessions[session_id] = {
+                'history': [],
+                'context': get_club_context()
+            }
+        
+        session = chat_sessions[session_id]
+        
+        # Build prompt with context
+        system_prompt = build_system_prompt(session['context'])
+        
+        # Add system context to first message if new session
+        if not session['history']:
+            full_prompt = f"{system_prompt}\n\n{user_message}"
+        else:
+            full_prompt = user_message
+        
+        # Call Cortex LLM
+        response = call_cortex_llm(full_prompt, session['history'])
+        
+        # Update history
+        session['history'].append({'role': 'user', 'content': user_message})
+        session['history'].append({'role': 'assistant', 'content': response})
+        
+        # Keep history manageable (last 10 exchanges)
+        if len(session['history']) > 20:
+            session['history'] = session['history'][-20:]
+        
+        return jsonify({
+            'response': response,
+            'session_id': session_id
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/chat/reset', methods=['POST'])
+def reset_chat():
+    """Reset a chat session."""
+    data = request.json
+    session_id = data.get('session_id', 'default')
+    
+    if session_id in chat_sessions:
+        del chat_sessions[session_id]
+    
+    return jsonify({'message': f'Session {session_id} reset successfully'})
 
 
 if __name__ == '__main__':

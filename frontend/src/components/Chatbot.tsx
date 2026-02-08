@@ -59,8 +59,8 @@ export function Chatbot({ className = '' }: ChatbotProps) {
     }
   };
 
-  const handleReset = () => {
-    chatApi.resetSession();
+  const handleReset = async () => {
+    await chatApi.resetSession();
     setMessages([
       chatApi.createAssistantMessage(
         "Chat reset! 🔄 How can I help you find clubs and positions today?"
